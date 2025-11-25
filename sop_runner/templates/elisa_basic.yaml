@@ -1,0 +1,37 @@
+name: elisa-basic
+summary: Base ELISA run with prep, read, analysis and QC controls
+steps:
+  - name: plate-preparation
+    required_start_fields:
+      - operator
+      - reagent_lot
+    required_completion_fields:
+      - incubation_time_minutes
+    min_duration_minutes: 0
+    max_duration_minutes: 60
+    controls:
+      - positive control applied on row A
+      - negative control applied on row H
+    reagents:
+      - name: coating_buffer
+        lot_field: reagent_lot
+  - name: plate-reading
+    required_start_fields:
+      - operator
+      - instrument
+    required_completion_fields:
+      - runtime_minutes
+    min_duration_minutes: 0
+    max_duration_minutes: 15
+    controls:
+      - instrument self-check
+    reagents: []
+  - name: analysis-and-qc
+    required_start_fields:
+      - analyst
+    required_completion_fields:
+      - qc_rule
+      - report_path
+    controls:
+      - westgard ruleset applied
+    reagents: []

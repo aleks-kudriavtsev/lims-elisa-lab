@@ -13,8 +13,13 @@ def test_build_full_run_executes_tasks(tmp_path):
     dag, logger = build_full_run(str(plate_path), instrument="SpectraMax", assay="IgG", standards=standards, controls=controls)
     results = dag.run()
     names = [name for name, _ in results]
-    assert "prepare" in names
+    assert "plate-preparation-start" in names
+    assert "plate-preparation-complete" in names
     assert "ingest" in names
+    assert "plate-reading-start" in names
+    assert "plate-reading-complete" in names
     assert "analytics" in names
+    assert "analysis-and-qc-start" in names
+    assert "analysis-and-qc-complete" in names
     assert "qc" in names
     assert any(entry.startswith("executed") for entry in logger.entries)

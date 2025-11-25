@@ -44,19 +44,39 @@ def build_full_run(
 ) -> Tuple[WorkflowDAG, AuditLogger]:
     logger = AuditLogger()
     service = WorkflowService()
-    workflow = service.create_workflow("elisa", ["prepare", "read", "analyze", "qc"])
+    workflow = service.create_workflow_from_template("elisa", "elisa_basic")
 
     dag = WorkflowDAG(logger)
 
     dag.add_task(
-        "prepare",
-        lambda: service.record_step_start("elisa", operator="operator-1", reagent_lot="lot-1"),
+        "plate-preparation-start",
+        lambda: service.record_step_start(
+            "elisa", operator="operator-1", inputs={"operator": "operator-1", "reagent_lot": "lot-1"}
+        ),
     )
-    dag.add_task("sign-prepare", lambda: service.record_step_signature("elisa", signature="sig-prepare"))
+    dag.add_task(
+        "plate-preparation-complete",
+        lambda: service.record_step_signature(
+            "elisa", signature="sig-prepare", completion_inputs={"incubation_time_minutes": "30"}
+        ),
+    )
 
     dag.add_task(
         "ingest",
         lambda: parse_plate_csv(plate_path, instrument=instrument, assay=assay).to_json(),
+    )
+
+    dag.add_task(
+        "plate-reading-start",
+        lambda: service.record_step_start(
+            "elisa", operator="operator-2", inputs={"operator": "operator-2", "instrument": instrument}
+        ),
+    )
+    dag.add_task(
+        "plate-reading-complete",
+        lambda: service.record_step_signature(
+            "elisa", signature="sig-read", completion_inputs={"runtime_minutes": "6"}
+        ),
     )
 
     def _fit():
@@ -65,6 +85,19 @@ def build_full_run(
         return {"fit": fit, "curve": fit_5pl(xs, ys)}
 
     dag.add_task("analytics", _fit)
+
+    dag.add_task(
+        "analysis-and-qc-start",
+        lambda: service.record_step_start(
+            "elisa", operator="analyst-1", inputs={"analyst": "analyst-1"}
+        ),
+    )
+    dag.add_task(
+        "analysis-and-qc-complete",
+        lambda: service.record_step_signature(
+            "elisa", signature="sig-qc", completion_inputs={"qc_rule": "westgard", "report_path": "/tmp/report"}
+        ),
+    )
 
     dag.add_task("qc", lambda: check_westgard(controls))
     return dag, logger
