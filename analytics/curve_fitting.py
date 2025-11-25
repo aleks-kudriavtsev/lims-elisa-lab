@@ -3,6 +3,8 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Dict, Iterable, List, Tuple
 
+import importlib.util
+
 
 @dataclass
 class FitResult:
@@ -10,6 +12,8 @@ class FitResult:
     parameters: Dict[str, float]
     r_squared: float
     predictions: List[Tuple[float, float]]
+    converged: bool
+    status: str
 
 
 def four_parameter_logistic(x: float, a: float, b: float, c: float, d: float) -> float:
@@ -43,59 +47,162 @@ def _gradient_descent(
     loss_fn: Callable[[List[float]], float],
     initial_params: List[float],
     learning_rate: float = 1e-3,
-    iterations: int = 500,
-) -> List[float]:
+    max_iterations: int = 500,
+    tolerance: float = 1e-6,
+) -> Tuple[List[float], bool, str]:
     params = list(initial_params)
-    for _ in range(iterations):
+    previous_loss = loss_fn(params)
+    for iteration in range(max_iterations):
         grads = _finite_difference(loss_fn, params)
+        if max(abs(g) for g in grads) < tolerance:
+            return params, True, "Converged by gradient tolerance"
         params = [p - learning_rate * g for p, g in zip(params, grads)]
-    return params
+        current_loss = loss_fn(params)
+        if abs(previous_loss - current_loss) < tolerance:
+            return params, True, "Converged by tolerance"
+        previous_loss = current_loss
+    return params, False, "Maximum iterations reached"
 
 
-def fit_4pl(xs: Iterable[float], ys: Iterable[float]) -> FitResult:
+def _validate_inputs(xs: Iterable[float], ys: Iterable[float]) -> Tuple[List[float], List[float]]:
     x_list = list(xs)
     y_list = list(ys)
+    if not x_list or not y_list:
+        raise ValueError("xs and ys must be non-empty")
+    if len(x_list) != len(y_list):
+        raise ValueError("xs and ys must have the same length")
+    if any(x <= 0 for x in x_list):
+        raise ValueError("Concentrations must be positive for logistic fitting")
+    return x_list, y_list
+
+
+def _maybe_import_scipy_optimize():
+    if importlib.util.find_spec("scipy") is None:
+        return None
+    from scipy import optimize  # type: ignore
+
+    return optimize
+
+
+def fit_4pl(
+    xs: Iterable[float],
+    ys: Iterable[float],
+    *,
+    backend: str = "auto",
+    learning_rate: float = 5e-4,
+    max_iterations: int = 4000,
+    tolerance: float = 1e-6,
+) -> FitResult:
+    x_list, y_list = _validate_inputs(xs, ys)
     a0 = min(y_list)
     d0 = max(y_list)
     c0 = sum(x_list) / len(x_list)
     b0 = 1.0
 
-    def loss(params: List[float]) -> float:
-        a, b, c, d = params
-        preds = [four_parameter_logistic(x, a, b, c, d) for x in x_list]
-        return sum((p - y) ** 2 for p, y in zip(preds, y_list))
+    optimize = _maybe_import_scipy_optimize()
+    use_scipy = backend == "scipy" or (backend == "auto" and optimize is not None)
 
-    a, b, c, d = _gradient_descent(
-        loss,
-        [a0, b0, c0, d0],
-        learning_rate=5e-4,
-        iterations=1500,
-    )
+    if use_scipy and optimize is not None:
+        try:
+            params, _ = optimize.curve_fit(
+                four_parameter_logistic,
+                x_list,
+                y_list,
+                p0=[a0, b0, max(c0, 1e-6), d0],
+                bounds=(
+                    [-math.inf, 0.0, 1e-6, -math.inf],
+                    [math.inf, math.inf, math.inf, math.inf],
+                ),
+                maxfev=5000,
+            )
+            status = "SciPy backend converged"
+            converged = True
+        except Exception as exc:  # pragma: no cover - error path depends on SciPy availability
+            params = [a0, b0, c0, d0]
+            status = f"SciPy backend failed: {exc}"
+            converged = False
+    else:
+        params, converged, status = _gradient_descent(
+            loss_fn=lambda p: sum(
+                (
+                    four_parameter_logistic(x, p[0], p[1], p[2], p[3])
+                    - y
+                )
+                ** 2
+                for x, y in zip(x_list, y_list)
+            ),
+            initial_params=[a0, b0, max(c0, 1e-6), d0],
+            learning_rate=learning_rate,
+            max_iterations=max_iterations,
+            tolerance=tolerance,
+        )
+    a, b, c, d = params
     predictions = [(x, four_parameter_logistic(x, a, b, c, d)) for x in x_list]
     r2 = _r_squared(y_list, [p for _, p in predictions])
-    return FitResult(model="4PL", parameters={"a": a, "b": b, "c": c, "d": d}, r_squared=r2, predictions=predictions)
+    return FitResult(
+        model="4PL",
+        parameters={"a": a, "b": b, "c": c, "d": d},
+        r_squared=r2,
+        predictions=predictions,
+        converged=converged,
+        status=status,
+    )
 
 
-def fit_5pl(xs: Iterable[float], ys: Iterable[float]) -> FitResult:
-    x_list = list(xs)
-    y_list = list(ys)
+def fit_5pl(
+    xs: Iterable[float],
+    ys: Iterable[float],
+    *,
+    backend: str = "auto",
+    learning_rate: float = 5e-4,
+    max_iterations: int = 8000,
+    tolerance: float = 1e-6,
+) -> FitResult:
+    x_list, y_list = _validate_inputs(xs, ys)
     a0 = min(y_list)
     d0 = max(y_list)
     c0 = sum(x_list) / len(x_list)
     b0 = 1.0
     g0 = 1.0
 
-    def loss(params: List[float]) -> float:
-        a, b, c, d, g = params
-        preds = [five_parameter_logistic(x, a, b, c, d, g) for x in x_list]
-        return sum((p - y) ** 2 for p, y in zip(preds, y_list))
+    optimize = _maybe_import_scipy_optimize()
+    use_scipy = backend == "scipy" or (backend == "auto" and optimize is not None)
 
-    a, b, c, d, g = _gradient_descent(
-        loss,
-        [a0, b0, c0, d0, g0],
-        learning_rate=2e-4,
-        iterations=1800,
-    )
+    if use_scipy and optimize is not None:
+        try:
+            params, _ = optimize.curve_fit(
+                five_parameter_logistic,
+                x_list,
+                y_list,
+                p0=[a0, b0, max(c0, 1e-6), d0, g0],
+                bounds=(
+                    [-math.inf, 0.0, 1e-6, -math.inf, 1e-6],
+                    [math.inf, math.inf, math.inf, math.inf, math.inf],
+                ),
+                maxfev=7000,
+            )
+            status = "SciPy backend converged"
+            converged = True
+        except Exception as exc:  # pragma: no cover - error path depends on SciPy availability
+            params = [a0, b0, max(c0, 1e-6), d0, g0]
+            status = f"SciPy backend failed: {exc}"
+            converged = False
+    else:
+        params, converged, status = _gradient_descent(
+            loss_fn=lambda p: sum(
+                (
+                    five_parameter_logistic(x, p[0], p[1], p[2], p[3], p[4])
+                    - y
+                )
+                ** 2
+                for x, y in zip(x_list, y_list)
+            ),
+            initial_params=[a0, b0, max(c0, 1e-6), d0, g0],
+            learning_rate=learning_rate,
+            max_iterations=max_iterations,
+            tolerance=tolerance,
+        )
+    a, b, c, d, g = params
     predictions = [(x, five_parameter_logistic(x, a, b, c, d, g)) for x in x_list]
     r2 = _r_squared(y_list, [p for _, p in predictions])
     return FitResult(
@@ -103,6 +210,8 @@ def fit_5pl(xs: Iterable[float], ys: Iterable[float]) -> FitResult:
         parameters={"a": a, "b": b, "c": c, "d": d, "g": g},
         r_squared=r2,
         predictions=predictions,
+        converged=converged,
+        status=status,
     )
 
 
