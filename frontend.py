@@ -5,6 +5,8 @@ from typing import Dict, List, Tuple
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
 
+from lims.adapter import AuthenticationError, LIMSAdapter
+from lims.config import CFRPart11Policy, LIMSConfig, LIMSContext
 from orchestrator.workflow import build_full_run
 from qc.westgard import ControlResult
 
@@ -13,6 +15,23 @@ app.secret_key = os.environ.get("FRONTEND_SECRET_KEY", "dev-secret-key")
 app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(__file__), "uploads")
 
 ASSAY_OPTIONS = ["IRT", "hTSH", "17-OHP", "TGal", "CPK-MM"]
+
+lim_config = LIMSConfig(
+    system_name="DemoLIMS",
+    base_url="http://localhost",
+    api_key="demo",
+)
+lim_policy = CFRPart11Policy()
+lim_context = LIMSContext(config=lim_config, policy=lim_policy)
+adapter = LIMSAdapter(lim_context)
+adapter.register_user("alice", role="technician", password="p@ss")
+adapter.register_user("bob", role="qa", password="secure")
+adapter.register_user("carol", role="admin", password="root")
+
+ACTION_ROLES = {
+    "create_sample": {"technician", "admin"},
+    "approve_record": {"qa", "admin"},
+}
 
 
 operator_journal: List[str] = []
@@ -26,6 +45,43 @@ def record_action(actor: str, action: str) -> None:
 
 def ensure_upload_folder() -> None:
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+
+def current_user() -> Dict[str, str]:
+    return session.get("auth", {})
+
+
+def require_login():
+    if not session.get("auth"):
+        flash("Войдите в систему для продолжения")
+        return redirect(url_for("login"))
+    return None
+
+
+def role_allowed(action: str) -> bool:
+    role = current_user().get("role")
+    allowed = ACTION_ROLES.get(action, set(lim_config.allowed_roles))
+    return bool(role and role in allowed)
+
+
+def get_audit_entries() -> List[Dict[str, str]]:
+    entries = []
+    for entry in adapter.get_audit_trail():
+        entries.append(
+            {
+                "user": entry.user_id,
+                "action": entry.action,
+                "timestamp": entry.timestamp.isoformat(),
+                "signature": entry.signature,
+                "reason": entry.reason,
+            }
+        )
+    return entries
+
+
+@app.context_processor
+def inject_globals() -> Dict[str, object]:
+    return {"current_user": current_user(), "lim_config": lim_config, "lim_policy": lim_policy}
 
 
 def parse_standards(raw: str) -> List[Tuple[float, float]]:
@@ -56,6 +112,35 @@ def parse_controls(raw: str) -> List[Dict[str, float]]:
     return controls
 
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        user_id = request.form.get("user_id", "").strip()
+        password = request.form.get("password", "")
+        otp = request.form.get("otp") or None
+        if not user_id or not password:
+            flash("Укажите логин и пароль")
+            return redirect(url_for("login"))
+        try:
+            token = adapter.authenticate(user_id, password, otp=otp)
+        except AuthenticationError as exc:
+            flash(str(exc))
+            return redirect(url_for("login"))
+        role = adapter.get_role(user_id) or ""
+        session["auth"] = {"user_id": user_id, "role": role, "token": token}
+        flash(f"Вход выполнен, роль: {role}")
+        return redirect(url_for("select_test"))
+    return render_template("login.html", allowed_roles=lim_config.allowed_roles, policy=lim_policy)
+
+
+@app.route("/logout")
+def logout():
+    session.pop("auth", None)
+    session.pop("wizard", None)
+    flash("Вы вышли из системы")
+    return redirect(url_for("login"))
+
+
 @app.route("/")
 def index() -> str:
     return redirect(url_for("select_test"))
@@ -63,10 +148,12 @@ def index() -> str:
 
 @app.route("/wizard/test", methods=["GET", "POST"])
 def select_test():
+    if redirect_response := require_login():
+        return redirect_response
     if request.method == "POST":
         assay = request.form.get("assay")
         instrument = request.form.get("instrument")
-        operator = request.form.get("operator") or "unknown"
+        operator = request.form.get("operator") or current_user().get("user_id", "unknown")
         if not assay or assay not in ASSAY_OPTIONS:
             flash("Выберите тест из списка")
             return redirect(url_for("select_test"))
@@ -79,6 +166,8 @@ def select_test():
 
 @app.route("/wizard/upload", methods=["GET", "POST"])
 def upload_csv():
+    if redirect_response := require_login():
+        return redirect_response
     wizard = session.get("wizard")
     if not wizard:
         return redirect(url_for("select_test"))
@@ -101,6 +190,8 @@ def upload_csv():
 
 @app.route("/wizard/standards", methods=["GET", "POST"])
 def standards():
+    if redirect_response := require_login():
+        return redirect_response
     wizard = session.get("wizard")
     if not wizard or "plate_path" not in wizard:
         return redirect(url_for("upload_csv"))
@@ -123,6 +214,22 @@ def standards():
         })
         session["wizard"] = wizard
         record_action(wizard.get("operator", "unknown"), "подтвердил стандарты и контроли")
+        if not wizard.get("sample_id"):
+            if not role_allowed("create_sample"):
+                flash("Недостаточно прав для создания записи образца")
+                return redirect(url_for("standards"))
+            token = current_user().get("token", "")
+            sample_id = adapter.create_sample(
+                token,
+                {
+                    "assay": wizard.get("assay", ""),
+                    "instrument": wizard.get("instrument", ""),
+                    "operator": wizard.get("operator", ""),
+                },
+            )
+            wizard["sample_id"] = sample_id
+            session["wizard"] = wizard
+            flash(f"Создана запись образца {sample_id}")
         return redirect(url_for("review"))
     return render_template(
         "standards.html",
@@ -134,6 +241,8 @@ def standards():
 
 @app.route("/wizard/review")
 def review():
+    if redirect_response := require_login():
+        return redirect_response
     wizard = session.get("wizard")
     if not wizard or "controls" not in wizard:
         return redirect(url_for("standards"))
@@ -153,7 +262,9 @@ def review():
     analytics_result = result_map.get("analytics", {})
     westgard = result_map.get("qc", {})
     audit_entries = operator_journal + run_logger.entries
+    audit_log = get_audit_entries()
     approval = wizard.get("approved_by")
+    can_approve = role_allowed("approve_record")
     return render_template(
         "review.html",
         wizard=wizard,
@@ -161,15 +272,30 @@ def review():
         analytics=analytics_result,
         westgard=westgard,
         audit_entries=audit_entries,
+        audit_log=audit_log,
         approval=approval,
+        can_approve=can_approve,
     )
 
 
 @app.route("/wizard/approve", methods=["POST"])
 def approve():
+    if redirect_response := require_login():
+        return redirect_response
     wizard = session.get("wizard") or {}
-    approver = request.form.get("approver") or "approver-unknown"
+    approver = request.form.get("approver") or current_user().get("user_id", "approver-unknown")
+    reason = request.form.get("reason") or None
+    if lim_policy.require_reason_for_changes and not reason:
+        flash("Укажите причину изменения для аудита")
+        return redirect(url_for("review"))
+    if not role_allowed("approve_record"):
+        flash("Недостаточно прав для утверждения")
+        return redirect(url_for("review"))
+    token = current_user().get("token", "")
+    record_id = wizard.get("sample_id") or "result"
+    adapter.approve_record(token, record_id, reason=reason)
     wizard["approved_by"] = approver
+    wizard["approval_reason"] = reason
     session["wizard"] = wizard
     record_action(approver, "утвердил результаты анализа")
     flash("Результаты утверждены")

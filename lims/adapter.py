@@ -57,6 +57,10 @@ class LIMSAdapter:
         user_id = token.split("-")[1]
         self._record_action(user_id, f"approve:{record_id}", reason=reason, signature=token)
 
+    def get_role(self, user_id: str) -> Optional[str]:
+        user = self._users.get(user_id)
+        return user.get("role") if user else None
+
     def _assert_token(self, token: str) -> None:
         if not token.startswith("token-"):
             raise AuthenticationError("Invalid token format")

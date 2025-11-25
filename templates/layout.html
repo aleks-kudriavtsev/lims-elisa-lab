@@ -10,6 +10,15 @@
     <div class="container">
         <h1 class="title">Мастер анализа ELISA</h1>
         <p class="subtitle">Выбор теста → Загрузка CSV → Стандарты/контроли → Расчет 4/5PL → Проверка правил Westgard → Утверждение</p>
+        <div class="notification is-light is-small">
+            {% if current_user.get('user_id') %}
+            <p>В системе: <strong>{{ current_user.get('user_id') }}</strong> (роль: {{ current_user.get('role') }})
+                <a class="button is-small is-light" href="{{ url_for('logout') }}">Выйти</a>
+            </p>
+            {% else %}
+            <p>Вы не авторизованы. <a class="button is-small is-link" href="{{ url_for('login') }}">Войти</a></p>
+            {% endif %}
+        </div>
         {% with messages = get_flashed_messages() %}
         {% if messages %}
         <div class="notification is-warning">

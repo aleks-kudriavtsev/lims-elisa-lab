@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="box">
+    <h2 class="title is-4">Вход в систему</h2>
+    <form method="post">
+        <div class="field">
+            <label class="label">Пользователь</label>
+            <div class="control">
+                <input class="input" type="text" name="user_id" placeholder="alice, bob или carol">
+            </div>
+        </div>
+        <div class="field">
+            <label class="label">Пароль</label>
+            <div class="control">
+                <input class="input" type="password" name="password" placeholder="пароль">
+            </div>
+        </div>
+        <div class="field">
+            <label class="label">OTP (при необходимости)</label>
+            <div class="control">
+                <input class="input" type="text" name="otp" placeholder="123456">
+            </div>
+        </div>
+        <div class="field is-grouped">
+            <div class="control">
+                <button class="button is-link" type="submit">Войти</button>
+            </div>
+        </div>
+    </form>
+    <p class="is-size-7">Доступные роли: {{ allowed_roles|join(', ') }}. Для MFA обязательно ввести OTP.</p>
+</div>
+{% endblock %}
