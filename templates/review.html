@@ -3,6 +3,9 @@
 <div class="content">
     <p><strong>Шаг 4-5:</strong> результаты 4PL/5PL и контроль Westgard.</p>
     <p>Тест: <strong>{{ wizard.assay }}</strong>, прибор: <strong>{{ wizard.instrument }}</strong>, файл: <strong>{{ wizard.plate_path }}</strong></p>
+    {% if wizard.sample_id %}
+    <p>Запись LIMS: <strong>{{ wizard.sample_id }}</strong></p>
+    {% endif %}
 </div>
 <div class="columns">
     <div class="column">
@@ -53,16 +56,45 @@
     </ul>
 </div>
 <div class="box">
+    <h2 class="title is-4">Аудиторский след LIMS</h2>
+    {% if audit_log %}
+    <table class="table is-fullwidth is-striped">
+        <thead><tr><th>Пользователь</th><th>Действие</th><th>Подпись</th><th>Время</th><th>Причина</th></tr></thead>
+        <tbody>
+        {% for entry in audit_log %}
+            <tr>
+                <td>{{ entry.user }}</td>
+                <td>{{ entry.action }}</td>
+                <td>{{ entry.signature }}</td>
+                <td>{{ entry.timestamp }}</td>
+                <td>{{ entry.reason or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>Нет записей аудита.</p>
+    {% endif %}
+</div>
+<div class="box">
     <h2 class="title is-4">Финальное утверждение</h2>
     {% if approval %}
     <p class="has-text-success">Утвердил: {{ approval }}</p>
+    {% if wizard.approval_reason %}<p class="is-size-7">Причина: {{ wizard.approval_reason }}</p>{% endif %}
     {% else %}
     <form method="post" action="{{ url_for('approve') }}">
         <div class="field">
             <label class="label">Утвердил</label>
-            <div class="control"><input class="input" type="text" name="approver" placeholder="ID утверждающего"></div>
+            <div class="control"><input class="input" type="text" name="approver" placeholder="ID утверждающего" value="{{ current_user.get('user_id','') }}"></div>
         </div>
-        <div class="field"><button class="button is-primary" type="submit">Утвердить</button></div>
+        {% if lim_policy.require_reason_for_changes %}
+        <div class="field">
+            <label class="label">Причина изменения</label>
+            <div class="control"><textarea class="textarea" name="reason" rows="2" placeholder="Например, проверка QA"></textarea></div>
+        </div>
+        {% endif %}
+        <div class="field"><button class="button is-primary" type="submit" {% if not can_approve %}disabled title="Требуется роль QA или admin"{% endif %}>Утвердить</button></div>
+        {% if not can_approve %}<p class="help is-danger">Ваша роль не позволяет утверждать результаты.</p>{% endif %}
     </form>
     {% endif %}
 </div>
