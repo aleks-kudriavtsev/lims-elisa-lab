@@ -45,6 +45,11 @@ This repository organizes ELISA laboratory assets into layered components to kee
 - Enforce segregation of duties: operators vs approvers vs administrators, with centralized logging (e.g., [OpenTelemetry](https://opentelemetry.io/)) and secure secrets management (e.g., [HashiCorp Vault](https://www.vaultproject.io/)).
 - Orchestrator should expose APIs/webhooks for external systems and produce validation-ready execution records.
 
+## Frontend wizard for ELISA runs
+- A lightweight Flask UI (`frontend.py`) guides the operator through test selection, CSV upload, standards/controls confirmation, curve-fitting (4PL/5PL), Westgard checks, and final approval.
+- Install dependencies with `pip install -r requirements.txt` and start the server via `python frontend.py`; by default it listens on `http://127.0.0.1:5000`.
+- Operator actions (upload, confirmation, approval) are recorded alongside the `AuditLogger` events from the orchestrated run.
+
 ## Validation & Compliance Notes
 - Establish a configuration management baseline with versioned releases, signed tags, and change control aligned to **ISO 13485** design controls where applicable.
 - Ensure disaster recovery (backups, restore tests) and business continuity plans are documented in `docs/qms`.

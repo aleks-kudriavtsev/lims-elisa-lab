@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="content">
+    <p><strong>Шаг 3:</strong> подтвердите стандарты и контроли.</p>
+    <p>Формат: одна строка на точку, значения через запятую.</p>
+</div>
+<form method="post">
+    <div class="field">
+        <label class="label">Стандарты (концентрация, сигнал)</label>
+        <div class="control">
+            <textarea class="textarea" name="standards" rows="5">{{ default_standards }}</textarea>
+        </div>
+    </div>
+    <div class="field">
+        <label class="label">Контроли (номер прогона, значение, среднее, SD)</label>
+        <div class="control">
+            <textarea class="textarea" name="controls" rows="5">{{ default_controls }}</textarea>
+        </div>
+    </div>
+    <div class="field is-grouped">
+        <div class="control">
+            <a class="button" href="{{ url_for('upload_csv') }}">Назад</a>
+        </div>
+        <div class="control">
+            <button class="button is-link" type="submit">Далее: расчет</button>
+        </div>
+    </div>
+</form>
+{% endblock %}

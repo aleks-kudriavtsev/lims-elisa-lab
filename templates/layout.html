@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>ELISA QC Wizard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+</head>
+<body>
+<section class="section">
+    <div class="container">
+        <h1 class="title">Мастер анализа ELISA</h1>
+        <p class="subtitle">Выбор теста → Загрузка CSV → Стандарты/контроли → Расчет 4/5PL → Проверка правил Westgard → Утверждение</p>
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="notification is-warning">
+            {% for message in messages %}
+                <p>{{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+</section>
+</body>
+</html>

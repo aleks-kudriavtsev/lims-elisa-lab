@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="content">
+    <p><strong>Шаг 2:</strong> загрузите CSV с показаниями тарелки.</p>
+</div>
+<form method="post" enctype="multipart/form-data">
+    <div class="field">
+        <label class="label">Кто загружает</label>
+        <div class="control">
+            <input class="input" type="text" name="uploader" placeholder="ID оператора" value="{{ wizard.get('uploaded_by','') }}">
+        </div>
+    </div>
+    <div class="field">
+        <label class="label">CSV файл</label>
+        <div class="control">
+            <input class="file-input" type="file" name="plate_csv" accept=".csv">
+        </div>
+    </div>
+    <div class="field is-grouped">
+        <div class="control">
+            <a class="button" href="{{ url_for('select_test') }}">Назад</a>
+        </div>
+        <div class="control">
+            <button class="button is-link" type="submit">Далее: стандарты/контроли</button>
+        </div>
+    </div>
+</form>
+{% endblock %}
