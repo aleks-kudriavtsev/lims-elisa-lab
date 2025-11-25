@@ -1,0 +1,72 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="content">
+    <p><strong>Шаг 4-5:</strong> результаты 4PL/5PL и контроль Westgard.</p>
+    <p>Тест: <strong>{{ wizard.assay }}</strong>, прибор: <strong>{{ wizard.instrument }}</strong>, файл: <strong>{{ wizard.plate_path }}</strong></p>
+</div>
+<div class="columns">
+    <div class="column">
+        <h2 class="title is-4">Ингест</h2>
+        <pre style="max-height: 240px; overflow: auto;">{{ ingest }}</pre>
+    </div>
+    <div class="column">
+        <h2 class="title is-4">4PL/5PL</h2>
+        {% if analytics.fit %}
+        <p><strong>4PL R²:</strong> {{ '%.4f'|format(analytics.fit.r_squared) }} | статус: {{ analytics.fit.status }}</p>
+        <p>Параметры 4PL: {{ analytics.fit.parameters }}</p>
+        {% endif %}
+        {% if analytics.curve %}
+        <p><strong>5PL R²:</strong> {{ '%.4f'|format(analytics.curve.r_squared) }} | статус: {{ analytics.curve.status }}</p>
+        <p>Параметры 5PL: {{ analytics.curve.parameters }}</p>
+        {% endif %}
+        {% if analytics.fit %}
+        <h3 class="title is-6">Прогнозы 4PL</h3>
+        <table class="table is-fullwidth">
+            <thead><tr><th>Conc</th><th>Signal</th></tr></thead>
+            <tbody>
+                {% for point in analytics.fit.predictions %}
+                <tr><td>{{ point[0] }}</td><td>{{ point[1] }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+<div class="box">
+    <h2 class="title is-4">Правила Westgard</h2>
+    {% if westgard %}
+    <ul>
+        {% for rule, idxs in westgard.items() %}
+        <li>{{ rule }}: {% if idxs %}нарушения в позициях {{ idxs|join(', ') }}{% else %}нарушений нет{% endif %}</li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>Нет данных QC.</p>
+    {% endif %}
+</div>
+<div class="box">
+    <h2 class="title is-4">Журнал действий</h2>
+    <ul>
+        {% for entry in audit_entries %}
+        <li>{{ entry }}</li>
+        {% endfor %}
+    </ul>
+</div>
+<div class="box">
+    <h2 class="title is-4">Финальное утверждение</h2>
+    {% if approval %}
+    <p class="has-text-success">Утвердил: {{ approval }}</p>
+    {% else %}
+    <form method="post" action="{{ url_for('approve') }}">
+        <div class="field">
+            <label class="label">Утвердил</label>
+            <div class="control"><input class="input" type="text" name="approver" placeholder="ID утверждающего"></div>
+        </div>
+        <div class="field"><button class="button is-primary" type="submit">Утвердить</button></div>
+    </form>
+    {% endif %}
+</div>
+<div class="buttons">
+    <a class="button" href="{{ url_for('standards') }}">Назад</a>
+</div>
+{% endblock %}
