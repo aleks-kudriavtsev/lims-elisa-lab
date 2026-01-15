@@ -115,6 +115,9 @@ def standards():
         except ValueError as exc:
             flash(str(exc))
             return redirect(url_for("standards"))
+        if not standards_list:
+            flash("Введите хотя бы одну строку стандарта перед продолжением")
+            return redirect(url_for("standards"))
         wizard.update({
             "standards": standards_list,
             "controls": controls_list,
@@ -136,6 +139,9 @@ def standards():
 def review():
     wizard = session.get("wizard")
     if not wizard or "controls" not in wizard:
+        return redirect(url_for("standards"))
+    if not wizard.get("standards"):
+        flash("Введите стандарты перед просмотром результатов")
         return redirect(url_for("standards"))
     controls_objects = [
         ControlResult(run=ctrl["run"], value=ctrl["value"], mean=ctrl["mean"], sd=ctrl["sd"])
