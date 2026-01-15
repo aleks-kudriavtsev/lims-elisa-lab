@@ -92,12 +92,12 @@ def build_full_run(
             "elisa", operator="analyst-1", inputs={"analyst": "analyst-1"}
         ),
     )
+    dag.add_task("qc", lambda: check_westgard(controls))
+
     dag.add_task(
         "analysis-and-qc-complete",
         lambda: service.record_step_signature(
             "elisa", signature="sig-qc", completion_inputs={"qc_rule": "westgard", "report_path": "/tmp/report"}
         ),
     )
-
-    dag.add_task("qc", lambda: check_westgard(controls))
     return dag, logger
