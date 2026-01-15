@@ -117,6 +117,8 @@ def standards():
             return redirect(url_for("standards"))
         if not standards_list:
             flash("Введите хотя бы одну строку стандарта перед продолжением")
+            wizard.update({"standards": [], "standards_raw": standards_raw})
+            session["wizard"] = wizard
             return redirect(url_for("standards"))
         wizard.update({
             "standards": standards_list,
@@ -140,7 +142,8 @@ def review():
     wizard = session.get("wizard")
     if not wizard or "controls" not in wizard:
         return redirect(url_for("standards"))
-    if not wizard.get("standards"):
+    standards = wizard.get("standards") or []
+    if not standards:
         flash("Введите стандарты перед просмотром результатов")
         return redirect(url_for("standards"))
     controls_objects = [
@@ -151,7 +154,7 @@ def review():
         plate_path=wizard["plate_path"],
         instrument=wizard.get("instrument", ""),
         assay=wizard.get("assay", ""),
-        standards=wizard.get("standards", []),
+        standards=standards,
         controls=controls_objects,
     )
     dag_results = dag.run()
